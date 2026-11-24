@@ -27,55 +27,46 @@ jobs:
       - name: Show available signing identities
         run: security find-identity -v -p codesigning || true
 
-      - name: Set up keychain for ad-hoc signing
+      # 这里不强求 ad-hoc 签名：GitHub 云 Mac 没有证书，Sideloadly 会在用户电脑上重新签名，
+      # 所以直接产出未签名 .app 再手工打包 IPA，能避开签名/描述文件导致的 exit code 66。
+      - name: Build (unsigned .app, signed later by Sideloadly)
         run: |
-          # 使用 ad-hoc 签名（-s -），无需 Apple 开发者账号即可编译出 IPA
           mkdir -p build
-          echo "Using ad-hoc code sign"
-
-      - name: Build (ad-hoc signed .app)
-        run: |
+          set -o pipefail
           xcodebuild \
             -project TipScan.xcodeproj \
             -scheme TipScan \
             -configuration Release \
             -derivedDataPath build \
             -destination 'generic/platform=iOS' \
-            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGNING_ALLOWED=NO \
             IPHONEOS_DEPLOYMENT_TARGET=14.0 \
-            clean archive -archivePath build/TipScan.xcarchive
+            clean archive -archivePath build/TipScan.xcarchive 2>&1 | tee build/xcodebuild.log
 
-      - name: Export .ipa
+      - name: Package .ipa manually
         run: |
-          mkdir -p build/export
-          cat > build/ExportOptions.plist <<'EOF'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key>
-            <string>ad-hoc</string>
-            <key>signingStyle</key>
-            <string>manual</string>
-            <key>teamID</key>
-            <string></string>
-            <key>compileBitcode</key>
-            <false/>
-          </dict>
-          </plist>
-          EOF
-          xcodebuild -exportArchive \
-            -archivePath build/TipScan.xcarchive \
-            -exportPath build/export \
-            -exportOptionsPlist build/ExportOptions.plist || {
-              # ad-hoc 导出若失败，直接从 .app 打包成 ipa
-              echo "exportArchive failed, fallback to manual .ipa packaging"
-              mkdir -p build/export/Payload
-              cp -R build/TipScan.xcarchive/Products/Applications/TipScan.app build/export/Payload/
-              cd build/export && zip -qry TipScan.ipa Payload
-            }
+          set -e
+          APP=$(find build/TipScan.xcarchive/Products/Applications -name '*.app' -print -quit 2>/dev/null)
+          if [ -z "$APP" ]; then
+            APP=$(find build/Build/Products -name 'TipScan.app' -print -quit 2>/dev/null)
+          fi
+          test -n "$APP" || { echo "No .app found"; exit 1; }
+          mkdir -p build/export/Payload
+          cp -R "$APP" build/export/Payload/
+          cd build/export
+          zip -qry TipScan.ipa Payload
+          ls -lh TipScan.ipa
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: BuildLog
+          path: build/xcodebuild.log
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: List build output
         run: find build -name "*.ipa" -o -name "*.app" | head -20
