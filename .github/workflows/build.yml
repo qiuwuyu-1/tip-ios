@@ -7,15 +7,20 @@ on:
 
 jobs:
   build:
-    runs-on: macos-14
+    # macos-14 会解析到 arm64 机型（macos-14-arm64-us-xl），部分账号不支持。
+    # 改用官方仍在维护的 Intel runner，避开 arm64 调度问题。
+    runs-on: macos-15-intel
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Select Xcode
         run: |
-          # 选择机器上任意一个 Xcode（不写死版本）
-          XC=$(ls -d /Applications/Xcode*.app 2>/dev/null | head -1)
+          # 优先选 Xcode 16（可编译 iOS 14 部署目标），找不到再用机器上其他版本
+          XC=$(ls -d /Applications/Xcode_16*.app 2>/dev/null | tail -1)
+          if [ -z "$XC" ]; then
+            XC=$(ls -d /Applications/Xcode*.app 2>/dev/null | tail -1)
+          fi
           if [ -n "$XC" ]; then sudo xcode-select -s "$XC/Contents/Developer"; fi
           xcodebuild -version
 
