@@ -7,28 +7,35 @@ on:
 
 jobs:
   build:
-    # macos-14 会解析到 arm64 机型（macos-14-arm64-us-xl），部分账号不支持。
-    # 改用官方仍在维护的 Intel runner，避开 arm64 调度问题。
     runs-on: macos-15-intel
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Select Xcode
+      - name: Select Xcode with iOS platform
         run: |
-          # 优先选 Xcode 16（可编译 iOS 14 部署目标），找不到再用机器上其他版本
-          XC=$(ls -d /Applications/Xcode_16*.app 2>/dev/null | tail -1)
+          XC=""
+          if ls /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS*.sdk >/dev/null 2>&1; then
+            XC=/Applications/Xcode.app
+          fi
           if [ -z "$XC" ]; then
-            XC=$(ls -d /Applications/Xcode*.app 2>/dev/null | tail -1)
+            for APP in $(ls -d /Applications/Xcode_16.4*.app /Applications/Xcode_16*.app /Applications/Xcode*.app 2>/dev/null | sort -u); do
+              if ls "$APP"/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS*.sdk >/dev/null 2>&1; then
+                XC="$APP"
+                break
+              fi
+            done
+          fi
+          if [ -z "$XC" ]; then
+            XC=/Applications/Xcode.app
+            echo "iPhoneOS SDK missing, trying to download iOS platform..."
+            sudo xcode-select -s "$XC/Contents/Developer"
+            xcodebuild -downloadPlatform iOS || true
           fi
           if [ -n "$XC" ]; then sudo xcode-select -s "$XC/Contents/Developer"; fi
           xcodebuild -version
+          xcodebuild -showsdks
 
-      - name: Show available signing identities
-        run: security find-identity -v -p codesigning || true
-
-      # 这里不强求 ad-hoc 签名：GitHub 云 Mac 没有证书，Sideloadly 会在用户电脑上重新签名，
-      # 所以直接产出未签名 .app 再手工打包 IPA，能避开签名/描述文件导致的 exit code 66。
       - name: Build (unsigned .app, signed later by Sideloadly)
         run: |
           mkdir -p build
@@ -38,7 +45,8 @@ jobs:
             -scheme TipScan \
             -configuration Release \
             -derivedDataPath build \
-            -destination 'generic/platform=iOS' \
+            -sdk iphoneos \
+            SUPPORTED_PLATFORMS=iphoneos \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
@@ -67,9 +75,6 @@ jobs:
           path: build/xcodebuild.log
           if-no-files-found: ignore
           retention-days: 7
-
-      - name: List build output
-        run: find build -name "*.ipa" -o -name "*.app" | head -20
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
