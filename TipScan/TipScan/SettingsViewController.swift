@@ -107,7 +107,11 @@ class SettingsViewController: UIViewController {
 
         let picker = InlinePicker(items: items, key: key)
         picker.tag = key == "ocrProvider" ? 1 : 2
-        picker.addTarget(self, action: #selector(pickerChanged(_:)), for: .valueChanged)
+        // UIPickerView 不是 UIControl，不能用 addTarget；改用 didSelectRow 回调更新输入框
+        picker.onSelect = { [weak tf] row in
+            guard row < items.count else { return }
+            tf?.text = items[row]
+        }
         tf.inputView = picker
         let toolbar = UIToolbar()
         toolbar.sizeToFit()
@@ -117,13 +121,6 @@ class SettingsViewController: UIViewController {
         tf.inputAccessoryView = toolbar
         fields[key] = tf
         stack.addArrangedSubview(tf)
-    }
-
-    @objc private func pickerChanged(_ sender: InlinePicker) {
-        guard let key = sender.pickKey,
-              let tf = fields[key],
-              sender.selectedRow(inComponent: 0) < sender.items.count else { return }
-        tf.text = sender.items[sender.selectedRow(inComponent: 0)]
     }
 
     @objc private func donePick() {
@@ -158,6 +155,7 @@ class SettingsViewController: UIViewController {
 private class InlinePicker: UIPickerView, UIPickerViewDataSource, UIPickerViewDelegate {
     let items: [String]
     var pickKey: String?
+    var onSelect: ((Int) -> Void)?
     init(items: [String], key: String) {
         self.items = items
         self.pickKey = key
@@ -170,5 +168,8 @@ private class InlinePicker: UIPickerView, UIPickerViewDataSource, UIPickerViewDe
     func pickerView(_ pickerView: UIPickerView, numberOfRowsInComponent component: Int) -> Int { items.count }
     func pickerView(_ pickerView: UIPickerView, titleForRow row: Int, forComponent component: Int) -> String? {
         return items[row]
+    }
+    func pickerView(_ pickerView: UIPickerView, didSelectRow row: Int, inComponent component: Int) {
+        onSelect?(row)
     }
 }
