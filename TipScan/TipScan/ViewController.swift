@@ -188,11 +188,13 @@ class ViewController: UIViewController, WKScriptMessageHandler, WKUIDelegate,
     }
 
     // ---------- 拍照 / 选图（WKWebView file input）----------
-    // WKUIDelegate 的文件选择回调从 iOS 14.5 起才有；部署目标 14.0 时必须标注可用版本，
-    // 否则 Xcode 16 会把它当成 14.0 上的 API 而编译失败。
-    @available(iOS 14.5, *)
+    // Swift SDK 把 WKOpenPanelParameters 标成 iOS 18.4+，若直接写进签名会导致
+    // 部署目标 14.0 编译失败。但该 delegate 的 Objective-C selector 从 iOS 14.5
+    // 起就能被 WKWebView 调用，所以用 Any 代替参数类型 + 显式写 OC selector：
+    // 既能兼容 iOS 14 编译，又能在 14.5+ 正常收到网页 <input type=file> 的拍照请求。
+    @objc(webView:runOpenPanelWithParameters:initiatedByFrame:completionHandler:)
     func webView(_ webView: WKWebView,
-                 runOpenPanelWith parameters: WKOpenPanelParameters,
+                 runOpenPanelWithParameters parameters: Any,
                  initiatedByFrame frame: WKFrameInfo,
                  completionHandler: @escaping ([URL]?) -> Void) {
         self.openPanelCompletion = completionHandler
