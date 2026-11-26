@@ -80,7 +80,12 @@ class ViewController: UIViewController, WKScriptMessageHandler, WKUIDelegate,
     }
 
     private func loadPage() {
-        guard let url = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "Assets") else {
+        // 打包时 index.html 可能落在 Assets/ 子目录，也可能在 App 包根目录，两处都找
+        var pageURL = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "Assets")
+        if pageURL == nil {
+            pageURL = Bundle.main.url(forResource: "index", withExtension: "html")
+        }
+        guard let url = pageURL else {
             let label = UILabel(frame: view.bounds)
             label.text = "页面资源加载失败"
             label.textAlignment = .center
