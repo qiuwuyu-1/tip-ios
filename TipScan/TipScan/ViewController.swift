@@ -188,6 +188,9 @@ class ViewController: UIViewController, WKScriptMessageHandler, WKUIDelegate,
     }
 
     // ---------- 拍照 / 选图（WKWebView file input）----------
+    // WKUIDelegate 的文件选择回调从 iOS 14.5 起才有；部署目标 14.0 时必须标注可用版本，
+    // 否则 Xcode 16 会把它当成 14.0 上的 API 而编译失败。
+    @available(iOS 14.5, *)
     func webView(_ webView: WKWebView,
                  runOpenPanelWith parameters: WKOpenPanelParameters,
                  initiatedByFrame frame: WKFrameInfo,
